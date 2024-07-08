@@ -16,6 +16,9 @@ import logging
 import requests
 from urllib.parse import urljoin, urlparse
 from threading import Thread
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
 
 # Configure logging
 logging.basicConfig(filename='scraping.log', level=logging.ERROR, format='%(asctime)s - %(levelname)s: %(message)s')
@@ -156,7 +159,7 @@ def scroll_and_extract_data(browser, progress_var, progress_bar, tree, display_b
         display_button.config(state=tk.NORMAL)  # Re-enable the display button after scraping is complete
 
 # Function to start scraping
-def start_scraping():
+def start_scraping(profile_path = None):
     search_query = search_entry.get()
     location = location_entry.get()
     if not search_query or not location:
@@ -167,10 +170,26 @@ def start_scraping():
 
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--log-level=3")
-
+    chrome_options.add_argument("--disable-notifications")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--mute-audio")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("headless")
+    
+    if profile_path:
+     chrome_options.add_argument(f"user-data-dir={profile_path}")
+     
     try:
-        browser = webdriver.Chrome(options=chrome_options)
+        browser = webdriver.Chrome(options=chrome_options, service=Service(ChromeDriverManager().install()))
         browser.get(str(link))
+        browser.maximize_window()
+        time.sleep(1)
+        try:
+                AcceptAll = browser.find_element("xpath", '//button[@aria-label="Accept all"]')
+                AcceptAll.click()
+                time.sleep(1)
+        except Exception as e:
+                print("No 'Accept all' button found or could not click it:", e)
         progress_var.set(0)
         display_button.config(state=tk.DISABLED)  # Disable the display button during scraping
         scraping_thread = Thread(target=scroll_and_extract_data, args=(browser, progress_var, progress_bar, tree, display_button))
@@ -194,7 +213,28 @@ def display_data():
         for i in tree.get_children():
             tree.delete(i)
 
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind("<Enter>", self.display_tooltip)
+        self.widget.bind("<Leave>", self.remove_tooltip)
+        
+    def display_tooltip(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(self.tooltip, text=self.text, background="#ffffe0", relief="solid", borderwidth=1, font=("Arial", "10", "normal"))
+        label.pack(ipadx=5)
 
+    def remove_tooltip(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            
 # Set up the Tkinter window
 window = tk.Tk()
 window.title("Web Scraping GUI")
@@ -203,23 +243,33 @@ window.geometry("1200x800")
 frame = ttk.Frame(window, padding="10")
 frame.pack(fill="both", expand=True)
 
+chrome_profile_tooltip_text = r"C:\Users\YourUserName\AppData\Local\Google\Chrome\User Data\Profile 1"
+
 # Input fields
 ttk.Label(frame, text="Search Query:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
 search_entry = ttk.Entry(frame, width=40)
 search_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
+
 ttk.Label(frame, text="Location:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
 location_entry = ttk.Entry(frame, width=40)
 location_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
+
+ttk.Label(frame, text="Chrome profile:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
+Chrome_profile = ttk.Entry(frame, width=40)
+Chrome_profile.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+Tooltip(Chrome_profile, chrome_profile_tooltip_text)
+
+
 # Progress bar
 progress_var = tk.DoubleVar()
 progress_bar = ttk.Progressbar(frame, variable=progress_var, maximum=100)
-progress_bar.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
+progress_bar.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
 # Start button
 start_button = ttk.Button(frame, text="Start Scraping", command=start_scraping)
-start_button.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
+start_button.grid(row=2, column=2, padx=5, pady=5)
 
 # Display button
 display_button = ttk.Button(frame, text="Display Data", command=display_data)
@@ -238,3 +288,4 @@ frame.grid_rowconfigure(4, weight=1)
 frame.grid_columnconfigure(1, weight=1)
 
 window.mainloop()
+
